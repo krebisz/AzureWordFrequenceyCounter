@@ -25,11 +25,11 @@ namespace AzureFunctionsApp
         public static string resultOutput;
 
         [FunctionName("FrequencyFunction")]
-        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req, ILogger log)
+        public static IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req, ILogger log)
         {
             try
             {
-               var file = req.Form.Files[0]; //https://soltisweb.com/blog/detail/2020-11-10-howtopostafiletoazurefunctionin3minutes
+                var file = req.Form.Files[0]; //https://soltisweb.com/blog/detail/2020-11-10-howtopostafiletoazurefunctionin3minutes
 
                 PopulateLetterScoreDictionary();
                 GetStringFromFile(file);
@@ -55,7 +55,8 @@ namespace AzureFunctionsApp
             CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
 
             CloudTable table = tableClient.GetTableReference("entities");
-            table.CreateIfNotExistsAsync();
+            Task t1 = table.CreateIfNotExistsAsync();
+            t1.Wait();
 
             // Create a new customer entity.
             WordEntity wordEntity = new WordEntity("Harp", "Walter");
@@ -66,7 +67,10 @@ namespace AzureFunctionsApp
             TableOperation insertOperation = TableOperation.Insert((Microsoft.WindowsAzure.Storage.Table.ITableEntity)wordEntity);
 
             // Execute the insert operation.
-            table.ExecuteAsync(insertOperation);
+            Task t = table.ExecuteAsync(insertOperation);
+            t.Wait();
+
+
         }
 
 
@@ -82,14 +86,16 @@ namespace AzureFunctionsApp
             CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
 
             CloudTable table = tableClient.GetTableReference("entities");
-            table.CreateIfNotExistsAsync();
+            //table.CreateIfNotExistsAsync();
 
             TableOperation tableOperation = TableOperation.Retrieve<WordEntity>(partitionKey, rowKey);
             Task<TableResult> tableResult = table.ExecuteAsync(tableOperation);
 
+
+
             var entity = tableResult.Result;
-            
-                var entities = new WordEntity();
+
+            var entities = new WordEntity();
 
 
             entities.Word = ((AzureFunctionsApp.WordEntity)entity.Result).Word;
@@ -226,7 +232,7 @@ namespace AzureFunctionsApp
             using (Stream stream = file.OpenReadStream())
             using (StreamReader reader = new StreamReader(stream))
             {
-                stringData = reader.ReadToEnd(); 
+                stringData = reader.ReadToEnd();
             };
 
             return stringData;
