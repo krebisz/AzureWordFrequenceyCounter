@@ -5,120 +5,34 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Azure.Storage.Blobs;
-
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Extensions.Logging;
-
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Text;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Microsoft.Azure;
 using Microsoft.WindowsAzure.Storage;
-using Microsoft.WindowsAzure.Storage.Auth;
 using Microsoft.WindowsAzure.Storage.Table;
 using Azure.Identity;
-using Azure;
-using Azure.Data.Tables;
 using Microsoft.AspNetCore.Http;
-using System.Collections.ObjectModel;
-//using Microsoft.Azure.Cosmos.Table;
+
 
 //https://azurefunctionsfrequencycounter.azurewebsites.net/api/FrequencyFunction
 namespace AzureFunctionsApp
 {
-    //public static class FileUpload
-    //{
-    //    [FunctionName("FileUpload")]
-    //    public static async Task<IActionResult> Run(
-    //        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req, ILogger log)
-    //    {
-    //        string Connection = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-    //        string containerName = Environment.GetEnvironmentVariable("ContainerName");
-    //        Stream myBlob = new MemoryStream();
-    //        var file = req.Form.Files["File"];
-    //        myBlob = file.OpenReadStream();
-    //        var blobClient = new BlobContainerClient(Connection, containerName);
-    //        var blob = blobClient.GetBlobClient(file.FileName);
-    //        await blob.UploadAsync(myBlob);
-    //        return new OkObjectResult("file uploaded successfylly");
-    //    }
-    //}
-
-
-
-
-
-
-
-
-
     public static class FrequencyFunction
     {
-
-
         public static IDictionary<char, int> LetterScores;
-
-
-        public static string fileInPath;
-        public static string fileOutPath;
-        public static string fileExcludePath;
-        public static string fileArchivePath;
         public static string resultOutput;
 
-
-
-
-
-
-
         [FunctionName("FrequencyFunction")]
-        public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
-            ILogger log)
+        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req, ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
-
-
-            //string name = req.Query["name"];
-            //string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            //dynamic data = JsonConvert.DeserializeObject(requestBody);
-            //name = name ?? data?.name;
-            //string responseMessage = string.IsNullOrEmpty(name)
-            //    ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-            //    : $"Hello, {name}. This HTTP triggered function executed successfully.";
-            //return new OkObjectResult(responseMessage);
-
             try
             {
-                //CloudStorageAccount storageAccount = CloudStorageAccount.Parse(CloudConfigurationManager.GetSetting("azurefunctionsapp2022061"));
+               var file = req.Form.Files[0]; //https://soltisweb.com/blog/detail/2020-11-10-howtopostafiletoazurefunctionin3minutes
 
-
-                // Create a BlobServiceClient that will authenticate through Active Directory
-                Uri accountUri = new Uri("https://azurefunctionsapp2022061.blob.core.windows.net/");
-                BlobServiceClient client = new BlobServiceClient(accountUri, new DefaultAzureCredential(), null);
-
-                //UploadBlob();
-                //DownloadBlob();
-
-
-
-                //var formdata = await req.ReadFormAsync();
-                var file = req.Form.Files[0]; //https://soltisweb.com/blog/detail/2020-11-10-howtopostafiletoazurefunctionin3minutes
-
-                CreateDictionary();
+                PopulateLetterScoreDictionary();
                 GetStringFromFile(file);
-
-                //return new OkObjectResult(file.FileName + " - " + file.Length.ToString());
-
 
                 UploadTable();
                 resultOutput += DownloadTable("Harp", "Walter") + "\r\n";
@@ -129,8 +43,6 @@ namespace AzureFunctionsApp
             {
                 return new BadRequestObjectResult(ex);
             }
-
-
         }
 
 
@@ -138,32 +50,20 @@ namespace AzureFunctionsApp
         //https://stackoverflow.com/questions/51730269/how-to-upload-a-single-variable-to-azure-table-storage-c-sharp
         public static void UploadTable()
         {
-
-
             var connectionString = "DefaultEndpointsProtocol=https;AccountName=freqcounter-cosmosdb;AccountKey=niwn9MFBfWKJTtf4KpmhRefljAVtPcMf1qzV1g9G0pn3HhoRT4R5u9PACAotyfPxTZbVlExSY6c4Ch2GlWIUDw==;TableEndpoint=https://freqcounter-cosmosdb.table.cosmos.azure.com:443/;";
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
             CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
 
-            //String tableName = "people";
-            //tableClient.createTableIfNotExists(tableName);
-
-
-            CloudTable table = tableClient.GetTableReference("people");
+            CloudTable table = tableClient.GetTableReference("entities");
             table.CreateIfNotExistsAsync();
 
-
-
-
-
-
-
             // Create a new customer entity.
-            CustomerEntity customer1 = new CustomerEntity("Harp", "Walter");
-            customer1.Email = "Walter@contoso.com";
-            customer1.PhoneNumber = "425-555-0101";
+            WordEntity wordEntity = new WordEntity("Harp", "Walter");
+            wordEntity.Word = "Walter@contoso.com";
+            wordEntity.Frequency = 22;
 
             // Create the TableOperation object that inserts the customer entity.
-            TableOperation insertOperation = TableOperation.Insert((Microsoft.WindowsAzure.Storage.Table.ITableEntity)customer1);
+            TableOperation insertOperation = TableOperation.Insert((Microsoft.WindowsAzure.Storage.Table.ITableEntity)wordEntity);
 
             // Execute the insert operation.
             table.ExecuteAsync(insertOperation);
@@ -181,150 +81,25 @@ namespace AzureFunctionsApp
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
             CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
 
-            //String tableName = "people";
-            //tableClient.createTableIfNotExists(tableName);
-
-
-            CloudTable table = tableClient.GetTableReference("people");
+            CloudTable table = tableClient.GetTableReference("entities");
             table.CreateIfNotExistsAsync();
 
-
-
-            TableOperation tableOperation = TableOperation.Retrieve<CustomerEntity>(partitionKey, rowKey);
+            TableOperation tableOperation = TableOperation.Retrieve<WordEntity>(partitionKey, rowKey);
             Task<TableResult> tableResult = table.ExecuteAsync(tableOperation);
 
-            var customerEntity = tableResult.Result;
+            var entity = tableResult.Result;
             
-                var entities = new CustomerEntity();
+                var entities = new WordEntity();
 
 
-            entities.Email = ((AzureFunctionsApp.CustomerEntity)customerEntity.Result).Email;
-            entities.PhoneNumber = ((AzureFunctionsApp.CustomerEntity)customerEntity.Result).PhoneNumber;
+            entities.Word = ((AzureFunctionsApp.WordEntity)entity.Result).Word;
+            entities.Frequency = ((AzureFunctionsApp.WordEntity)entity.Result).Frequency;
 
-
-            //((Microsoft.WindowsAzure.Storage.Table.TableResult)customerEntity).Result
-
-
-
-
-            //TableResult result = tableResult.Result;
-
-
-            //entities.Add(result);
-
-            //resultOutput = ((CustomerEntity)tableResult.Result).Email;
-            //Console.WriteLine(((CustomerEntity)tableResult.Result).Email);
-
-
-            resultOutput = entities.Email;
-
-
+            resultOutput = entities.Word;
             return resultOutput;
-
-
-
-
-
-            //// Create a new customer entity.
-            //CustomerEntity customer1 = new CustomerEntity("Harp", "Walter");
-            //customer1.Email = "Walter@contoso.com";
-            //customer1.PhoneNumber = "425-555-0101";
-
-            // Create the TableOperation object that inserts the customer entity.
-            //TableOperation insertOperation = TableOperation.Insert((Microsoft.WindowsAzure.Storage.Table.ITableEntity)customer1);
-
-
-
-
-
-            //TableOperation selectOperation = TableOperation.Retrieve();
-            //// Execute the insert operation.
-            //table.ExecuteAsync(selectOperation);
         }
 
-
-
-
-
-        public static void UploadBlob()
-        {
-            string connectionString = "DefaultEndpointsProtocol=https;AccountName=azurefunctionsapp2022061;AccountKey=3HFQ0g4DeMc8I2gPiA+iVXI/Mnrg5dXOsyU9PQZn25P35GKmvAjQKydzdXefdFOCwTec242FsbeO+ASt/7lJCw==;EndpointSuffix=core.windows.net";
-            string containerName = "alchemycontainer";
-            string blobName = "alchemyblob";
-            string filePath = "elements.txt";
-
-
-
-
-            // Get a reference to a container named "sample-container" and then create it
-            BlobContainerClient container = new BlobContainerClient(connectionString, containerName);
-
-
-            if (!container.Exists())
-                container.Create();
-
-
-            Uri accountUri = new Uri("https://azurefunctionsapp2022061.blob.core.windows.net/");
-            BlobContainerClient _container = new BlobContainerClient(accountUri, null);
-
-
-            //await new BlobClient(new Uri("https://aka.ms/bloburl")).DownloadToAsync(downloadPath);
-
-
-
-
-            // Get a reference to a blob named "sample-file" in a container named "sample-container"
-            BlobClient blob = container.GetBlobClient(blobName);
-
-            // Upload local file
-            blob.Upload(filePath);
-        }
-
-
-        //public static void UploadBlob()
-        //{
-        //    string connectionString = "DefaultEndpointsProtocol=https;AccountName=azurefunctionsapp2022061;AccountKey=3HFQ0g4DeMc8I2gPiA+iVXI/Mnrg5dXOsyU9PQZn25P35GKmvAjQKydzdXefdFOCwTec242FsbeO+ASt/7lJCw==;EndpointSuffix=core.windows.net";
-        //    string containerName = "alchemycontainer";
-        //    string blobName = "alchemyblob";
-        //    string filePath = "elements.txt";
-
-        //    // Get a reference to a container named "sample-container" and then create it
-        //    BlobContainerClient container = new BlobContainerClient(connectionString, containerName);
-
-
-        //    if (!container.Exists())
-        //    container.Create();
-
-
-        //    Uri accountUri = new Uri("https://azurefunctionsapp2022061.blob.core.windows.net/");
-        //    BlobContainerClient _container = new BlobContainerClient(accountUri, null);
-
-
-        //    //await new BlobClient(new Uri("https://aka.ms/bloburl")).DownloadToAsync(downloadPath);
-
-
-        //    // Get a reference to a blob named "sample-file" in a container named "sample-container"
-        //    BlobClient blob = container.GetBlobClient(blobName);
-
-        //    // Upload local file
-        //    blob.Upload(filePath);
-        //}
-
-
-        public static void DownloadBlob()
-        {
-            // Get a temporary path on disk where we can download the file
-            string downloadPath = "hello.jpg";
-
-            // Download the public blob at https://aka.ms/bloburl
-            new BlobClient(new Uri("https://aka.ms/bloburl")).DownloadTo(downloadPath);
-        }
-
-
-
-
-
-        public static void CreateDictionary()
+        public static void PopulateLetterScoreDictionary()
         {
             LetterScores = new Dictionary<char, int>();
             LetterScores.Add('a', 1);
@@ -410,12 +185,9 @@ namespace AzureFunctionsApp
             return message;
         }
 
-
-
         public static int GetWordScore(string word)
         {
             int score = 0;
-
 
             foreach (char c in word)
             {
@@ -425,22 +197,18 @@ namespace AzureFunctionsApp
                 {
                     score += LetterScores[c];
                 }
-
             }
 
             return score;
         }
 
-
-
-
-        private static void GetStringFromFile(IFormFile _file)
+        private static void GetStringFromFile(IFormFile file)
         {
-            string Filename = _file.FileName;
+            string Filename = file.FileName;
 
             if (!object.Equals(Filename, null))
             {
-                string stringData = ReadFileAsString(_file);
+                string stringData = ReadFileAsString(file);
                 IEnumerable<string> WordList = GetWordsFromString(stringData);
                 List<Tuple<string, int>> WordTupleList = CreateCountedWordList(WordList);
 
@@ -451,69 +219,21 @@ namespace AzureFunctionsApp
             }
         }
 
-        public static string ReadFileAsString(IFormFile _file)
+        public static string ReadFileAsString(IFormFile file)
         {
             string stringData;
 
-
-
-            using (Stream stream = _file.OpenReadStream())
+            using (Stream stream = file.OpenReadStream())
             using (StreamReader reader = new StreamReader(stream))
             {
-                stringData = reader.ReadToEnd(); //.ReadToEndAsync();
-
-                // Do something with file data
+                stringData = reader.ReadToEnd(); 
             };
-
-
-
-
-            //using (Stream fileStream = GetFileStream(fileName))
-            //{
-            //    StreamReader streamReader = new StreamReader(fileStream, Encoding.UTF8);
-            //    stringData = streamReader.ReadToEnd();
-            //}
 
             return stringData;
         }
 
-
-        //public static string ReadFileAsString(string fileName)
-        //{
-        //    string stringData;
-
-        //    using (Stream fileStream = GetFileStream(fileName))
-        //    {
-        //        StreamReader streamReader = new StreamReader(fileStream, Encoding.UTF8);
-        //        stringData = streamReader.ReadToEnd();
-        //    }
-
-        //    return stringData;
-        //}
-
-
-
-
-
-
-        public static Stream GetFileStream(string fileName)
-        {
-            try
-            {
-                return new FileStream(fileName, FileMode.Open);
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-        }
-
-
-
         private static IEnumerable<string> GetWordsFromString(string stringData)
         {
-            IEnumerable<string> stringList2 = new List<string>();
-
             stringData = CleanString(stringData);
             string[] stringArray = stringData.Split(new char[] { ' ', });
 
@@ -527,64 +247,17 @@ namespace AzureFunctionsApp
                 }
             }
 
-            stringList2 = stringList;
-            //stringList2 = stringList2.OrderBy(e => e.First()).ToList();
             stringList.Sort();
 
             return stringList;
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         public static string CleanString(string stringIn, bool setToLower = true)
         {
-            //string pattern = "[^a-zA-Z0-9]";
-
-            //Regex regex = new Regex("[^a-zA-Z0-9]");
-
-            //return regex.Replace(stringIn, "");
-
-
-
-
-
-
-
-
-            string stringOut = stringIn;
-            //stringOut = stringIn.Replace("\r\n", "");
-            //stringOut = stringOut.Replace(" ", "");
-
-            //if (setToLower)
-            //{
-            //    stringOut = stringOut.ToLowerInvariant();
-            //}
-
-            //return stringOut;
-
-
-
-
             NumberFormatInfo nfi = NumberFormatInfo.CurrentInfo;
 
             // Define the regular expression pattern.
-            string pattern;
-            pattern = @"^\s*[";
+            string pattern = @"^\s*[";
             // Get the positive and negative sign symbols.
             pattern += Regex.Escape(nfi.PositiveSign + nfi.NegativeSign) + @"]?\s?";
             // Get the currency symbol.
@@ -598,21 +271,8 @@ namespace AzureFunctionsApp
             // Determine the number of fractional digits in currency values.
             pattern += nfi.CurrencyDecimalDigits.ToString() + "}?){1}$";
 
-            Regex rgx = new Regex(pattern);
-
-
             string filelinesclean = Regex.Replace(stringIn, pattern, "");
-
-
-
-
-            //stringOut = stringIn.Replace(pattern, "");
-
-
             return filelinesclean;
-
-
-
         }
 
 
@@ -622,51 +282,33 @@ namespace AzureFunctionsApp
 
             IEnumerable<string> DistinctWordList = WordList.Distinct();
 
-
             foreach (string word in DistinctWordList)
             {
-
                 int count = WordList.Count(e => e == word);
 
-                // <word, frequency, score>
+                // <word, frequency>
                 Tuple<string, int> WordTuple = new Tuple<string, int>(word, count); //https://www.tutorialsteacher.com/csharp/csharp-tuple#:~:text=The%20following%20example%20creates%20a,passed%20values%20to%20the%20constructor. & https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/value-tuples#tuples-vs-systemtuple
                 WordTupleList.Add(WordTuple); //could keep max count at this level to provide output without looping again in function below for highest frequency & score word
             }
 
             return WordTupleList;
         }
-
-
     }
 
 
 
-    public class CustomerEntity : Microsoft.WindowsAzure.Storage.Table.TableEntity
+    public class WordEntity : TableEntity
     {
-        public CustomerEntity(string lastName, string firstName)
+        public WordEntity(string partitionKey, string rowKey)
         {
-            this.PartitionKey = lastName;
-            this.RowKey = firstName;
+            this.PartitionKey = partitionKey;
+            this.RowKey = rowKey;
         }
 
-        public CustomerEntity() { } // the parameter-less constructor must be provided
+        public WordEntity() { }
 
-        public string Email { get; set; }
+        public string Word { get; set; }
 
-        public string PhoneNumber { get; set; }
-
-        //public static explicit operator CustomerEntity(TableResult v)
-        //{
-        //    //throw new NotImplementedException();
-
-        //    return this; // ((CustomerEntity)v.Result).Email;
-        //}
-
-        //public static explicit operator CustomerEntity(TableResult v)
-        //{
-        //    //throw new NotImplementedException();
-
-
-        //}
+        public int Frequency { get; set; }
     }
 }
