@@ -137,56 +137,56 @@ namespace AzureFunctionsApp
         }
 
 
-        public static string ReturnMostFrequentWord(List<Tuple<string, int>> WordTupleList, int wordLength = 0)
+
+        public static string ReturnMostFrequentWord(List<WordEntity> WordEntityList, int wordLength = 0)
         {
             string message = string.Empty;
             string word = string.Empty;
-            int amount = 0;
+            int frequency = 0;
 
-            foreach (Tuple<string, int> t in WordTupleList)
+            foreach (WordEntity t in WordEntityList)
             {
-                if (wordLength == 0 || t.Item1.Length == wordLength)
+                if (wordLength == 0 || t.Word.Length == wordLength)
                 {
-                    if (t.Item2 > amount)
+                    if (t.Frequency > frequency)
                     {
-                        word = t.Item1;
-                        amount = t.Item2;
+                        word = t.Word;
+                        frequency = t.Frequency;
                     }
                 }
             }
 
             if (wordLength > 0)
             {
-                message = "Most frequent " + wordLength.ToString() + " word: " + word + " occurred " + amount.ToString() + " times";
+                message = "Most frequent " + wordLength.ToString() + " word: " + word + " occurred " + frequency.ToString() + " times";
             }
             else
             {
-                message = "Most frequent word: " + word + " occurred " + amount.ToString() + " times";
+                message = "Most frequent word: " + word + " occurred " + frequency.ToString() + " times";
             }
 
             return message;
         }
 
 
-        public static string ReturnHighestScoreWord(List<Tuple<string, int>> WordTupleList)
+        public static string ReturnHighestScoreWord(List<WordEntity> WordEntityList)
         {
-            string message = string.Empty;
             string word = string.Empty;
             int amount = 0;
 
-            foreach (Tuple<string, int> t in WordTupleList)
+            foreach (WordEntity t in WordEntityList)
             {
-                int score = GetWordScore(t.Item1);
+                int score = GetWordScore(t.Word);
 
                 if (score > amount)
                 {
-                    word = t.Item1;
+                    word = t.Word;
                     amount = score;
                 }
             }
 
             //AddNotification(new Notification("Highest scoring word(s)(according to Scrabble): " + word + " with a score of " + amount.ToString(), Notification.MessageType.Information));
-            message = "Highest scoring word(s)(according to Scrabble): " + word + " with a score of " + amount.ToString();
+            string message = "Highest scoring word(s)(according to Scrabble): " + word + " with a score of " + amount.ToString();
 
             return message;
         }
@@ -216,12 +216,11 @@ namespace AzureFunctionsApp
             {
                 string stringData = ReadFileAsString(file);
                 IEnumerable<string> WordList = GetWordsFromString(stringData);
-                List<Tuple<string, int>> WordTupleList = CreateCountedWordList(WordList);
+                List<WordEntity> WordTupleList = CreateCountedWordList(WordList);
 
                 resultOutput += ReturnMostFrequentWord(WordTupleList) + "\r\n";
                 resultOutput += ReturnMostFrequentWord(WordTupleList, 7) + "\r\n";
                 resultOutput += ReturnHighestScoreWord(WordTupleList) + "\r\n";
-
             }
         }
 
@@ -282,9 +281,9 @@ namespace AzureFunctionsApp
         }
 
 
-        public static List<Tuple<string, int>> CreateCountedWordList(IEnumerable<string> WordList)
+        public static List<WordEntity> CreateCountedWordList(IEnumerable<string> WordList)
         {
-            List<Tuple<string, int>> WordTupleList = new List<Tuple<string, int>>();
+            List<WordEntity> WordEntityList = new List<WordEntity>();
 
             IEnumerable<string> DistinctWordList = WordList.Distinct();
 
@@ -292,12 +291,14 @@ namespace AzureFunctionsApp
             {
                 int count = WordList.Count(e => e == word);
 
-                // <word, frequency>
-                Tuple<string, int> WordTuple = new Tuple<string, int>(word, count); //https://www.tutorialsteacher.com/csharp/csharp-tuple#:~:text=The%20following%20example%20creates%20a,passed%20values%20to%20the%20constructor. & https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/value-tuples#tuples-vs-systemtuple
-                WordTupleList.Add(WordTuple); //could keep max count at this level to provide output without looping again in function below for highest frequency & score word
+                WordEntity wordEntity = new WordEntity();
+                wordEntity.Word = word;
+                wordEntity.Frequency = count;
+
+                WordEntityList.Add(wordEntity); //could keep max count at this level to provide output without looping again in function below for highest frequency & score word
             }
 
-            return WordTupleList;
+            return WordEntityList;
         }
     }
 
