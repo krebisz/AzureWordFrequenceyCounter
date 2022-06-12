@@ -5,106 +5,62 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
-using Azure.Storage.Blobs;
 using System.Collections.Generic;
 using System.Linq;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Table;
-using Azure.Identity;
 using Microsoft.AspNetCore.Http;
+using Microsoft.ApplicationInsights;
 
-
-//https://azurefunctionsfrequencycounter.azurewebsites.net/api/FrequencyFunction
 namespace AzureFunctionsApp
 {
     public static class FrequencyFunction
     {
-        public static IDictionary<char, int> LetterScores;
         public static string resultOutput;
+        public static string partitionKey;
+        public static string rowKey;
+
+        public static string TableReference = "wordentities";
+        public static string CconnectionString = "DefaultEndpointsProtocol=https;AccountName=freqcounter-cosmosdb;AccountKey=niwn9MFBfWKJTtf4KpmhRefljAVtPcMf1qzV1g9G0pn3HhoRT4R5u9PACAotyfPxTZbVlExSY6c4Ch2GlWIUDw==;TableEndpoint=https://freqcounter-cosmosdb.table.cosmos.azure.com:443/;";
+        public static IDictionary<char, int> LetterScores;
+        private static readonly TelemetryClient telemetryClient;
 
         [FunctionName("FrequencyFunction")]
         public static IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req, ILogger log)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            PopulateLetterScoreDictionary();
+
             try
             {
-                var file = req.Form.Files[0]; //https://soltisweb.com/blog/detail/2020-11-10-howtopostafiletoazurefunctionin3minutes
+                IFormFile file = req.Form.Files[0]; //RESOURCE UTILIZED: https://soltisweb.com/blog/detail/2020-11-10-howtopostafiletoazurefunctionin3minutes
+                RunWordCounters(file);
 
-                PopulateLetterScoreDictionary();
-                GetStringFromFile(file);
+                CloudStorageAccount storageAccount = CloudStorageAccount.Parse(CconnectionString);
+                CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
+                CloudTable table = tableClient.GetTableReference(TableReference);
 
-                UploadTable();
-                resultOutput += DownloadTable("Harp", "Walter") + "\r\n";
-
-                return new OkObjectResult(resultOutput);
+                CreateCloudTable(table);
+                InsertTableEntity(table, partitionKey, rowKey);
+                SelectTableEntity(table, partitionKey, rowKey);
             }
             catch (Exception ex)
             {
                 return new BadRequestObjectResult(ex);
             }
+
+            watch.Stop();
+            resultOutput += "Total time elapsed: " + watch.ElapsedMilliseconds + " ms \r\n";
+
+            return new OkObjectResult(resultOutput);
         }
 
-
-
-        //https://stackoverflow.com/questions/51730269/how-to-upload-a-single-variable-to-azure-table-storage-c-sharp
-        public static void UploadTable()
-        {
-            var connectionString = "DefaultEndpointsProtocol=https;AccountName=freqcounter-cosmosdb;AccountKey=niwn9MFBfWKJTtf4KpmhRefljAVtPcMf1qzV1g9G0pn3HhoRT4R5u9PACAotyfPxTZbVlExSY6c4Ch2GlWIUDw==;TableEndpoint=https://freqcounter-cosmosdb.table.cosmos.azure.com:443/;";
-            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
-
-            CloudTable table = tableClient.GetTableReference("entities");
-            Task t1 = table.CreateIfNotExistsAsync();
-            t1.Wait();
-
-            // Create a new customer entity.
-            WordEntity wordEntity = new WordEntity("Harp", "Walter");
-            wordEntity.Word = "Walter@contoso.com";
-            wordEntity.Frequency = 22;
-
-            // Create the TableOperation object that inserts the customer entity.
-            TableOperation insertOperation = TableOperation.Insert((Microsoft.WindowsAzure.Storage.Table.ITableEntity)wordEntity);
-
-            // Execute the insert operation.
-            Task t = table.ExecuteAsync(insertOperation);
-            t.Wait();
-
-
-        }
-
-
-
-
-
-        public static string DownloadTable(string partitionKey, string rowKey)
-        {
-            string resultOutput = string.Empty;
-
-            var connectionString = "DefaultEndpointsProtocol=https;AccountName=freqcounter-cosmosdb;AccountKey=niwn9MFBfWKJTtf4KpmhRefljAVtPcMf1qzV1g9G0pn3HhoRT4R5u9PACAotyfPxTZbVlExSY6c4Ch2GlWIUDw==;TableEndpoint=https://freqcounter-cosmosdb.table.cosmos.azure.com:443/;";
-            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudTableClient tableClient = storageAccount.CreateCloudTableClient();
-
-            CloudTable table = tableClient.GetTableReference("entities");
-            //table.CreateIfNotExistsAsync();
-
-            TableOperation tableOperation = TableOperation.Retrieve<WordEntity>(partitionKey, rowKey);
-            Task<TableResult> tableResult = table.ExecuteAsync(tableOperation);
-
-
-
-            var entity = tableResult.Result;
-
-            var entities = new WordEntity();
-
-
-            entities.Word = ((AzureFunctionsApp.WordEntity)entity.Result).Word;
-            entities.Frequency = ((AzureFunctionsApp.WordEntity)entity.Result).Frequency;
-
-            resultOutput = entities.Word;
-            return resultOutput;
-        }
-
+        /// <summary>
+        /// Populates the scrabble letter score dictionary
+        /// </summary>
         public static void PopulateLetterScoreDictionary()
         {
             LetterScores = new Dictionary<char, int>();
@@ -137,6 +93,65 @@ namespace AzureFunctionsApp
         }
 
 
+        /// <summary>
+        /// Creates the table to hold the word entities
+        /// </summary>
+        /// <param name="table"></param>
+        public static void CreateCloudTable(CloudTable table)
+        {
+            Task taskCreate = table.CreateIfNotExistsAsync();
+            taskCreate.Wait();
+        }
+
+
+
+        /// <summary>
+        /// Insert the word entity (table entity) into the Azure non-relational table
+        /// </summary>
+        /// <param name="table">a cloud table</param>
+        /// <param name="partitionKey">the first identifier for the entity</param>
+        /// <param name="rowKey">the second ifentifier for the entity</param>
+        public static void InsertTableEntity(CloudTable table, string partitionKey, string rowKey) //RESOURCE UTILIZED: https://stackoverflow.com/questions/51730269/how-to-upload-a-single-variable-to-azure-table-storage-c-sharp
+        {
+            // Create a new word entity
+            WordEntity wordEntity = new WordEntity(partitionKey, rowKey);
+            wordEntity.Word = partitionKey;
+            int.TryParse(rowKey, out int frequency);
+            wordEntity.Frequency = frequency;
+
+            // Create the TableOperation object that inserts the word entity
+            TableOperation insertOperation = TableOperation.InsertOrReplace(wordEntity);
+
+            // Execute the insert operation
+            Task taskInsert = table.ExecuteAsync(insertOperation);
+            taskInsert.Wait();
+        }
+
+
+        /// <summary>
+        /// Selects a table (word) entity from the non-relational Azure table
+        /// </summary>
+        /// <param name="table">a cloud table</param>
+        /// <param name="partitionKey">the first identifier for the entity</param>
+        /// <param name="rowKey">the second ifentifier for the entity</param>
+        /// <returns></returns>
+        public static void SelectTableEntity(CloudTable table, string partitionKey, string rowKey)
+        {
+            TableOperation tableOperation = TableOperation.Retrieve<WordEntity>(partitionKey, rowKey);
+            Task<TableResult> tableResult = table.ExecuteAsync(tableOperation);
+            tableResult.Wait();
+            var tableEntity = tableResult.Result;
+
+            WordEntity wordEntity = new WordEntity();
+            wordEntity.Word = ((WordEntity)tableEntity.Result).Word;
+            wordEntity.Frequency = ((WordEntity)tableEntity.Result).Frequency;
+
+            resultOutput += "Word in Azure: " + wordEntity.Word + " occurred " + wordEntity.Frequency.ToString() + " times \r\n";
+        }
+
+
+
+
 
         public static string ReturnMostFrequentWord(List<WordEntity> WordEntityList, int wordLength = 0)
         {
@@ -158,6 +173,10 @@ namespace AzureFunctionsApp
 
             if (wordLength > 0)
             {
+                //These two variables are here to provided the "highest frequency" word found. It is very basic, but proves the functionality requested as to what is stored within Azure
+                partitionKey = word;
+                rowKey = frequency.ToString();
+
                 message = "Most frequent " + wordLength.ToString() + " word: " + word + " occurred " + frequency.ToString() + " times";
             }
             else
@@ -168,7 +187,11 @@ namespace AzureFunctionsApp
             return message;
         }
 
-
+        /// <summary>
+        /// Returns the highest scoring word in scrabble from the word list
+        /// </summary>
+        /// <param name="WordEntityList">Takes a list of entities that inherit from the table entity object</param>
+        /// <returns></returns>
         public static string ReturnHighestScoreWord(List<WordEntity> WordEntityList)
         {
             string word = string.Empty;
@@ -191,13 +214,18 @@ namespace AzureFunctionsApp
             return message;
         }
 
+        /// <summary>
+        /// Computes scrabble score for an individual word
+        /// </summary>
+        /// <param name="word">string to be scored</param>
+        /// <returns></returns>
         public static int GetWordScore(string word)
         {
             int score = 0;
 
             foreach (char c in word)
             {
-                bool keyExists = LetterScores.ContainsKey(c); //https://www.techiedelight.com/determine-key-exists-dictionary-csharp/
+                bool keyExists = LetterScores.ContainsKey(c); 
 
                 if (keyExists)
                 {
@@ -208,7 +236,11 @@ namespace AzureFunctionsApp
             return score;
         }
 
-        private static void GetStringFromFile(IFormFile file)
+        /// <summary>
+        /// The calling method that retrieves the posted file and the subsequent word counts
+        /// </summary>
+        /// <param name="file">a form file that is posted to the azure function app</param>
+        private static void RunWordCounters(IFormFile file)
         {
             string Filename = file.FileName;
 
@@ -216,14 +248,19 @@ namespace AzureFunctionsApp
             {
                 string stringData = ReadFileAsString(file);
                 IEnumerable<string> WordList = GetWordsFromString(stringData);
-                List<WordEntity> WordTupleList = CreateCountedWordList(WordList);
+                List<WordEntity> WordEntityList = CreateWordEntityList(WordList);
 
-                resultOutput += ReturnMostFrequentWord(WordTupleList) + "\r\n";
-                resultOutput += ReturnMostFrequentWord(WordTupleList, 7) + "\r\n";
-                resultOutput += ReturnHighestScoreWord(WordTupleList) + "\r\n";
+                resultOutput += ReturnMostFrequentWord(WordEntityList) + "\r\n";
+                resultOutput += ReturnMostFrequentWord(WordEntityList, 7) + "\r\n";
+                resultOutput += ReturnHighestScoreWord(WordEntityList) + "\r\n";
             }
         }
 
+        /// <summary>
+        /// Takes a posted file and reads it as a string
+        /// </summary>
+        /// <param name="file">a form file that is posted to the azure function app</param>
+        /// <returns></returns>
         public static string ReadFileAsString(IFormFile file)
         {
             string stringData;
@@ -237,73 +274,78 @@ namespace AzureFunctionsApp
             return stringData;
         }
 
+        /// <summary>
+        /// An input string is broken into individual words in a string list
+        /// </summary>
+        /// <param name="stringData">a string to be partitioned</param>
+        /// <returns></returns>
         private static IEnumerable<string> GetWordsFromString(string stringData)
         {
             stringData = CleanString(stringData);
-            string[] stringArray = stringData.Split(new char[] { ' ', });
+            string[] wordArray = stringData.Split(new char[] { ' ', });
+            List<string> wordList = new List<string>();
 
-            List<string> stringList = new List<string>();
-
-            foreach (string word in stringArray)
+            foreach (string word in wordArray)
             {
                 if (!string.IsNullOrEmpty(word))
                 {
-                    stringList.Add(word);
+                    wordList.Add(word);
                 }
             }
 
-            stringList.Sort();
-
-            return stringList;
+            wordList.Sort(); //The sort allows for optimization of counting through words
+            return wordList;
         }
 
+        /// <summary>
+        /// Used for filtering out characters that do not make up words within a provided input string
+        /// </summary>
+        /// <param name="stringIn">the string to clean special characters from</param>
+        /// <param name="setToLower">sets input to lower case</param>
+        /// <returns></returns>
         public static string CleanString(string stringIn, bool setToLower = true)
         {
             NumberFormatInfo nfi = NumberFormatInfo.CurrentInfo;
+         
+            string pattern = @"^\s*["; //Define the regular expression
+            pattern += Regex.Escape(nfi.PositiveSign + nfi.NegativeSign) + @"]?\s?"; //Get the positive and negative sign symbols
+            pattern += Regex.Escape(nfi.CurrencySymbol) + @"?\s?"; //Get the currency symbol
+            pattern += @"(\d*"; //Get integral digits
+            pattern += Regex.Escape(nfi.CurrencyDecimalSeparator) + "?"; //Get the decimal separator
+            pattern += @"\d{"; //Get the fractional digits
+            pattern += nfi.CurrencyDecimalDigits.ToString() + "}?){1}$"; //Get the number of fractional digits in currency values
 
-            // Define the regular expression pattern.
-            string pattern = @"^\s*[";
-            // Get the positive and negative sign symbols.
-            pattern += Regex.Escape(nfi.PositiveSign + nfi.NegativeSign) + @"]?\s?";
-            // Get the currency symbol.
-            pattern += Regex.Escape(nfi.CurrencySymbol) + @"?\s?";
-            // Add integral digits to the pattern.
-            pattern += @"(\d*";
-            // Add the decimal separator.
-            pattern += Regex.Escape(nfi.CurrencyDecimalSeparator) + "?";
-            // Add the fractional digits.
-            pattern += @"\d{";
-            // Determine the number of fractional digits in currency values.
-            pattern += nfi.CurrencyDecimalDigits.ToString() + "}?){1}$";
-
-            string filelinesclean = Regex.Replace(stringIn, pattern, "");
-            return filelinesclean;
+            return Regex.Replace(stringIn, pattern, "");
         }
 
-
-        public static List<WordEntity> CreateCountedWordList(IEnumerable<string> WordList)
+        /// <summary>
+        /// Accepts a string list as input and outputs a WordEntityList containing the distinct words and occurances found
+        /// </summary>
+        /// <param name="wordList">a string list of non-distinct words</param>
+        /// <returns></returns>
+        public static List<WordEntity> CreateWordEntityList(IEnumerable<string> wordList)
         {
-            List<WordEntity> WordEntityList = new List<WordEntity>();
+            List<WordEntity> wordEntityList = new List<WordEntity>();
+            IEnumerable<string> distinctWordList = wordList.Distinct();
 
-            IEnumerable<string> DistinctWordList = WordList.Distinct();
-
-            foreach (string word in DistinctWordList)
+            foreach (string word in distinctWordList)
             {
-                int count = WordList.Count(e => e == word);
+                int count = wordList.Count(e => e == word);
 
                 WordEntity wordEntity = new WordEntity();
                 wordEntity.Word = word;
                 wordEntity.Frequency = count;
 
-                WordEntityList.Add(wordEntity); //could keep max count at this level to provide output without looping again in function below for highest frequency & score word
+                wordEntityList.Add(wordEntity); //could keep max count at this level to provide output without looping again in functions built to find highest frequency & score word
             }
 
-            return WordEntityList;
+            return wordEntityList;
         }
     }
 
-
-
+    /// <summary>
+    /// The class that contains the words and frequency which are also table entities to use within a non-relational database
+    /// </summary>
     public class WordEntity : TableEntity
     {
         public WordEntity(string partitionKey, string rowKey)
