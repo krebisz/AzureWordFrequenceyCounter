@@ -23,13 +23,10 @@ AzureFunctionsApp
 *Performance Analytics: Microsoft.ApplicationInsights (Telemetry: TelemetryClient) was to be used, but time has made it more practical to do a simple timer to complete ops. Insights seem simple enough to add though from within Azure on the dashboard
 *Output: Basic output provided with a string that is built in different parts of the code ->DEFINATELY not the way to go about it (should be a single point that takes in parameterized values)
 *Tiered architecture: Individual projects to handle data; models and logic requires more time. Also  to do things conforming to proper SOLID principles
-*Regex cleanup: Fairly sure not all symbols are accounted for and would require more debugging to get completely right
-*Performance: Wanted to take the ordered Word List and provide an O(n) type of performance by counting the number of occurences in it, while removing those that are busy being counted as one would go along (popping them off effectively). Did not get to this
+*Regex cleanup: Some words not correctl parsed. Need more symbols and robust processing and would require more debugging to get completely right
+*Performance: Wanted to take the ordered Word List and provide an O(n) type of performance by counting the number of occurences in it, other possibilities like using hash tables, sub-lists (like a merge sort) and parrelel processing also exist
 *Testing: Much is required, no time for unit tests or the like
 *Resources: Read and got ideas from much more than those listed in the code, but the primary ones where I actually copied snippets are referenced
 *Configuration: Should be injected from a config file (or stored in Azure) and protected from clear-text
-
-
-
 
 

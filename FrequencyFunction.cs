@@ -103,8 +103,6 @@ namespace AzureFunctionsApp
             taskCreate.Wait();
         }
 
-
-
         /// <summary>
         /// Insert the word entity (table entity) into the Azure non-relational table
         /// </summary>
@@ -127,7 +125,6 @@ namespace AzureFunctionsApp
             taskInsert.Wait();
         }
 
-
         /// <summary>
         /// Selects a table (word) entity from the non-relational Azure table
         /// </summary>
@@ -148,10 +145,6 @@ namespace AzureFunctionsApp
 
             resultOutput += "Word in Azure: " + wordEntity.Word + " occurred " + wordEntity.Frequency.ToString() + " times \r\n";
         }
-
-
-
-
 
         public static string ReturnMostFrequentWord(List<WordEntity> WordEntityList, int wordLength = 0)
         {
@@ -328,9 +321,21 @@ namespace AzureFunctionsApp
             List<WordEntity> wordEntityList = new List<WordEntity>();
             IEnumerable<string> distinctWordList = wordList.Distinct();
 
-            foreach (string word in distinctWordList)
+            foreach (string word in distinctWordList) //MAIN performance bottleneck
             {
-                int count = wordList.Count(e => e == word);
+                int count = 0;
+                string currentword = wordList.ElementAt(0); 
+
+                while (word == currentword && wordList.Count() > count + 1)
+                {
+                    count++;
+
+                    if (wordList.Count() > count + 1)
+                    currentword = wordList.ElementAt(count);
+                }
+
+                wordList = wordList.Skip(count); //Work with an increasingly smaller list
+
 
                 WordEntity wordEntity = new WordEntity();
                 wordEntity.Word = word;
@@ -341,23 +346,5 @@ namespace AzureFunctionsApp
 
             return wordEntityList;
         }
-    }
-
-    /// <summary>
-    /// The class that contains the words and frequency which are also table entities to use within a non-relational database
-    /// </summary>
-    public class WordEntity : TableEntity
-    {
-        public WordEntity(string partitionKey, string rowKey)
-        {
-            this.PartitionKey = partitionKey;
-            this.RowKey = rowKey;
-        }
-
-        public WordEntity() { }
-
-        public string Word { get; set; }
-
-        public int Frequency { get; set; }
     }
 }
