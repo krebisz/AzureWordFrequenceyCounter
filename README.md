@@ -28,6 +28,6 @@ AzureFunctionsApp
 *Testing: Much is required, no time for unit tests or the like. There will surely be edge cases that would result in exceptions or unpredictable beaviour
 *Resources: Read and got ideas from much more than those listed in the code, but the primary ones where I actually copied snippets are referenced
 *Configuration: Should be injected from a config file (or stored in Azure) and protected from clear-text, number of other security aspects could also be me made to harden things
-*Code: Better language usage could also be looked at
+*Code: Better language usage could also be looked at. This includes but is not limited to better usage of inheritance, method signatures and accesors, interfaces, better use of sync vs. async methods and more
 
 

@@ -21,10 +21,10 @@ namespace AzureFunctionsApp
         public static string resultOutput;
         public static string partitionKey;
         public static string rowKey;
-
-        public static string TableReference = "wordentities";
-        public static string CconnectionString = "DefaultEndpointsProtocol=https;AccountName=freqcounter-cosmosdb;AccountKey=niwn9MFBfWKJTtf4KpmhRefljAVtPcMf1qzV1g9G0pn3HhoRT4R5u9PACAotyfPxTZbVlExSY6c4Ch2GlWIUDw==;TableEndpoint=https://freqcounter-cosmosdb.table.cosmos.azure.com:443/;";
         public static IDictionary<char, int> LetterScores;
+
+        private static string TableReference = "wordentities";
+        private static string CconnectionString = "DefaultEndpointsProtocol=https;AccountName=freqcounter-cosmosdb;AccountKey=niwn9MFBfWKJTtf4KpmhRefljAVtPcMf1qzV1g9G0pn3HhoRT4R5u9PACAotyfPxTZbVlExSY6c4Ch2GlWIUDw==;TableEndpoint=https://freqcounter-cosmosdb.table.cosmos.azure.com:443/;";
         private static readonly TelemetryClient telemetryClient;
 
         [FunctionName("FrequencyFunction")]
@@ -53,8 +53,8 @@ namespace AzureFunctionsApp
             }
 
             watch.Stop();
-            resultOutput += "Total time elapsed: " + watch.ElapsedMilliseconds + " ms \r\n";
 
+            resultOutput += "Total time elapsed: " + watch.ElapsedMilliseconds + " ms \r\n";
             return new OkObjectResult(resultOutput);
         }
 
@@ -146,10 +146,7 @@ namespace AzureFunctionsApp
                 }
             }
 
-            //AddNotification(new Notification("Highest scoring word(s)(according to Scrabble): " + word + " with a score of " + amount.ToString(), Notification.MessageType.Information));
-            string message = "Highest scoring word(s)(according to Scrabble): " + word + " with a score of " + amount.ToString();
-
-            return message;
+            return ("Highest scoring word(s)(according to Scrabble): " + word + " with a score of " + amount.ToString());
         }
 
         /// <summary>
