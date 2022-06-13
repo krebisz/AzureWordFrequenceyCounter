@@ -241,7 +241,7 @@ namespace AzureFunctionsApp
         /// <param name="stringIn">the string to clean special characters from</param>
         /// <param name="setToLower">sets input to lower case</param>
         /// <returns></returns>
-        public static string CleanString(string stringIn, bool setToLower = true)
+        public static string CleanString(string stringIn, bool setToLower = true) //RESOURCE UTILIZED: https://stackoverflow.com/questions/29033294/convert-string-to-decimal-but-keep-numeric-portion/29033892#29033892 (little rusty with regex expressions off-hand)
         {
             NumberFormatInfo nfi = NumberFormatInfo.CurrentInfo;
          
@@ -266,7 +266,7 @@ namespace AzureFunctionsApp
             List<WordEntity> wordEntityList = new List<WordEntity>();
             IEnumerable<string> distinctWordList = wordList.Distinct();
 
-            foreach (string word in distinctWordList) //MAIN performance bottleneck
+            foreach (string word in distinctWordList) //MAIN performance bottleneck. This was reoptimized to work through the entire word list without comparing everything to everything
             {
                 int count = 0;
                 string currentword = wordList.ElementAt(0); 
